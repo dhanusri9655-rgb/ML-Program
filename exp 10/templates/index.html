@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bus Delay Prediction — Machine Learning Laboratory Project</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <!-- ================= Navigation Bar ================= -->
+  <nav class="navbar">
+    <a href="#overview" class="nav-brand">
+      🚌 Bus Delay Prediction <span class="badge">ML Lab</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#dataset">Dataset</a></li>
+      <li><a href="#preprocessing">Preprocessing</a></li>
+      <li><a href="#eda">EDA</a></li>
+      <li><a href="#training">Training</a></li>
+      <li><a href="#prediction">Prediction</a></li>
+      <li><a href="#evaluation">Evaluation</a></li>
+      <li><a href="#history">History</a></li>
+    </ul>
+  </nav>
+
+  <div class="container">
+
+    <!-- ================= Hero / Header ================= -->
+    <header class="header-hero" id="overview">
+      <h1>Bus Delay <span>Prediction</span></h1>
+      <p>A complete Machine Learning Classification system to predict bus transit delays based on trip distance, traffic conditions, weather, schedule, and prior delays.</p>
+      
+      <div class="badge-row">
+        <span class="tag-badge">Task: <strong>Binary Classification</strong></span>
+        <span class="tag-badge">Target: <strong>Delay_Status (On-Time / Delayed)</strong></span>
+        <span class="tag-badge">Algorithm: <strong>Random Forest Classifier</strong></span>
+        <span class="tag-badge">Split: <strong>80% Train / 20% Test</strong></span>
+        <span class="tag-badge">Persistence: <strong>SQLite3 Database</strong></span>
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert-box alert-{{ category }}" style="margin-top: 20px;">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- ================= STEP 1: Dataset Overview ================= -->
+    <section class="step-section" id="dataset">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 1</span>
+          <h2>Dataset Overview</h2>
+        </div>
+        <span class="pill-badge pill-neutral">Local CSV Dataset</span>
+      </div>
+
+      <p class="step-desc">Summary of the synthesized bus transit dataset collected for model development and delay pattern analysis.</p>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Records</div>
+          <div class="value">{{ metrics.total_records }}</div>
+          <div class="sub-value">Bus-trip instances</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Features</div>
+          <div class="value">{{ metrics.total_features }}</div>
+          <div class="sub-value">Input attributes</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Target Variable</div>
+          <div class="value" style="font-size: 1.25rem;">{{ metrics.target_variable }}</div>
+          <div class="sub-value">Binary Classification</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Class Balance</div>
+          <div class="value" style="font-size: 1.1rem; color: #34d399;">
+            {{ metrics.class_distribution['On-Time'] }} On-Time / {{ metrics.class_distribution['Delayed'] }} Delayed
+          </div>
+          <div class="sub-value">Stratified split enabled</div>
+        </div>
+      </div>
+
+      <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 10px; color: var(--text-main);">Dataset Sample (First 10 Records)</h4>
+      <div class="table-responsive">
+        <table class="dark-table">
+          <thead>
+            <tr>
+              {% for col in dataset_columns %}
+                <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in dataset_sample %}
+              <tr>
+                <td>{{ row.Distance_km }} km</td>
+                <td>
+                  <span class="pill-badge {% if row.Traffic_Level == 'High' %}pill-warning{% elif row.Traffic_Level == 'Medium' %}pill-neutral{% else %}pill-success{% endif %}">
+                    {{ row.Traffic_Level }}
+                  </span>
+                </td>
+                <td>{{ row.Weather }}</td>
+                <td>{{ row.Time_of_Day }}</td>
+                <td>{{ row.Previous_Delay_Minutes }} min</td>
+                <td>
+                  <span class="pill-badge {% if row.Delay_Status == 'Delayed' %}pill-warning{% else %}pill-success{% endif %}">
+                    {{ row.Delay_Status }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= STEP 2: Data Preprocessing ================= -->
+    <section class="step-section" id="preprocessing">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 2</span>
+          <h2>Data Preprocessing</h2>
+        </div>
+        <span class="pill-badge pill-success">✓ Preprocessing Completed Successfully</span>
+      </div>
+
+      <p class="step-desc">Data cleaning, feature transformation, categorical encoding, and feature scaling pipeline.</p>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Missing Values (Before)</div>
+          <div class="value" style="color: #34d399;">{{ metrics.missing_before }}</div>
+          <div class="sub-value">No initial missing cells</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Missing Values (After)</div>
+          <div class="value" style="color: #34d399;">{{ metrics.missing_after }}</div>
+          <div class="sub-value">Cleaned dataset</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Numerical Features</div>
+          <div class="value" style="font-size: 1.05rem;">Distance, Prev. Delay</div>
+          <div class="sub-value">StandardScaler applied</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Categorical Features</div>
+          <div class="value" style="font-size: 1.05rem;">Traffic, Weather, Time</div>
+          <div class="sub-value">OneHotEncoder applied</div>
+        </div>
+      </div>
+
+      <div class="stat-card" style="margin-top: 10px;">
+        <div class="label">Pipeline Preprocessing Architecture</div>
+        <p style="font-size: 0.9rem; color: var(--text-main); margin-top: 4px;">
+          Scikit-Learn <code>ColumnTransformer</code> applying <strong>One-Hot Encoding</strong> for discrete features (<code>Traffic_Level</code>, <code>Weather</code>, <code>Time_of_Day</code>) and <strong>StandardScaler</strong> for continuous numerical features (<code>Distance_km</code>, <code>Previous_Delay_Minutes</code>).
+        </p>
+      </div>
+    </section>
+
+    <!-- ================= STEP 3: Exploratory Data Analysis ================= -->
+    <section class="step-section" id="eda">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 3</span>
+          <h2>Exploratory Data Analysis (EDA)</h2>
+        </div>
+        <span class="pill-badge pill-neutral">Visual Feature Analysis</span>
+      </div>
+
+      <p class="step-desc">Visualizations demonstrating the relationships between environmental, temporal, transit factors and bus delay outcomes.</p>
+
+      <div class="eda-grid">
+        <!-- 1. Traffic Level vs Delay Status (Primary Graph) -->
+        <div class="plot-card" style="grid-column: span 1;">
+          <h4>1. Traffic Level vs Bus Delay Status</h4>
+          <img src="{{ url_for('static', filename='plots/traffic_vs_delay.png') }}" alt="Traffic Level vs Delay Status">
+        </div>
+
+        <!-- 2. Weather Condition vs Delay Status -->
+        <div class="plot-card">
+          <h4>2. Weather Condition vs Bus Delay Status</h4>
+          <img src="{{ url_for('static', filename='plots/weather_vs_delay.png') }}" alt="Weather vs Delay Status">
+        </div>
+
+        <!-- 3. Time of Day vs Delay Status -->
+        <div class="plot-card">
+          <h4>3. Time of Day vs Bus Delay Status</h4>
+          <img src="{{ url_for('static', filename='plots/time_vs_delay.png') }}" alt="Time of Day vs Delay Status">
+        </div>
+
+        <!-- 4. Distance vs Delay Status -->
+        <div class="plot-card">
+          <h4>4. Trip Distance (km) vs Delay Status</h4>
+          <img src="{{ url_for('static', filename='plots/distance_vs_delay.png') }}" alt="Distance vs Delay Status">
+        </div>
+
+        <!-- 5. Target Class Distribution -->
+        <div class="plot-card">
+          <h4>5. Target Class Distribution (Delay_Status)</h4>
+          <img src="{{ url_for('static', filename='plots/delay_distribution.png') }}" alt="Class Distribution">
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STEP 4: Model Training ================= -->
+    <section class="step-section" id="training">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 4</span>
+          <h2>Model Training</h2>
+        </div>
+        <span class="pill-badge pill-success">✓ Model Training Completed Successfully</span>
+      </div>
+
+      <p class="step-desc">Training the classification model using an 80/20 train-test stratified partition.</p>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Machine Learning Model</div>
+          <div class="value" style="font-size: 1.25rem;">{{ metrics.model_name }}</div>
+          <div class="sub-value">n_estimators=100, max_depth=6</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Training Set (80%)</div>
+          <div class="value">{{ metrics.train_samples }}</div>
+          <div class="sub-value">Training records</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Testing Set (20%)</div>
+          <div class="value">{{ metrics.test_samples }}</div>
+          <div class="sub-value">Unseen test records</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Model Artifact</div>
+          <div class="value" style="font-size: 1.05rem;">bus_delay_model.pkl</div>
+          <div class="sub-value">Persisted via Joblib</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STEP 5: Bus Delay Prediction ================= -->
+    <section class="step-section" id="prediction">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 5</span>
+          <h2>Bus Delay Prediction</h2>
+        </div>
+        <span class="pill-badge pill-neutral">Live ML Inference</span>
+      </div>
+
+      <p class="step-desc">Input transit parameters below to predict whether the bus will arrive <strong>On-Time</strong> or face a <strong>Delay</strong>.</p>
+
+      <div class="prediction-container">
+        <!-- Input Form -->
+        <div class="form-panel">
+          <form id="predictionForm" action="/predict#prediction" method="POST">
+            
+            <div class="form-group">
+              <label for="distance">Trip Distance <span class="unit">(km)</span></label>
+              <input type="number" step="0.1" min="0" id="distance" name="distance" class="dark-input" placeholder="e.g. 14.5" required value="12.5">
+            </div>
+
+            <div class="form-group">
+              <label for="traffic_level">Traffic Level</label>
+              <select id="traffic_level" name="traffic_level" class="dark-select" required>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High" selected>High</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="weather">Weather Condition</label>
+              <select id="weather" name="weather" class="dark-select" required>
+                <option value="Clear">Clear</option>
+                <option value="Cloudy">Cloudy</option>
+                <option value="Rainy" selected>Rainy</option>
+                <option value="Foggy">Foggy</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="time_of_day">Time of Day</label>
+              <select id="time_of_day" name="time_of_day" class="dark-select" required>
+                <option value="Morning">Morning</option>
+                <option value="Afternoon">Afternoon</option>
+                <option value="Evening" selected>Evening</option>
+                <option value="Night">Night</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="previous_delay">Previous Delay <span class="unit">(minutes)</span></label>
+              <input type="number" step="1" min="0" id="previous_delay" name="previous_delay" class="dark-input" placeholder="e.g. 10" required value="15">
+            </div>
+
+            <button type="submit" id="predictBtn" class="btn-predict">Predict Bus Status</button>
+          </form>
+        </div>
+
+        <!-- Prediction Result Card -->
+        <div class="result-panel" id="resultPanel">
+          {% if prediction_result %}
+            <div class="result-box {% if prediction_result.prediction == 'Delayed' %}delayed{% else %}ontime{% endif %}">
+              <div class="header-text">BUS STATUS</div>
+              <div class="status-text">{{ prediction_result.prediction | upper }}</div>
+              
+              <div class="confidence-bar-container">
+                <div class="confidence-bar-label">
+                  <span>Prediction Confidence</span>
+                  <span>{{ prediction_result.confidence }}%</span>
+                </div>
+                <div class="confidence-bar-track">
+                  <div class="confidence-bar-fill {% if prediction_result.prediction == 'Delayed' %}delayed{% else %}ontime{% endif %}" style="width: {{ prediction_result.confidence }}%;"></div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Saved automatically to SQLite History (ID #{{ prediction_result.id }})
+            </p>
+          {% else %}
+            <div id="defaultResultPrompt" class="result-placeholder">
+              <div style="font-size: 2.5rem; margin-bottom: 12px; opacity: 0.7;">⏱️</div>
+              <p>Enter trip details on the left and click <strong>"Predict Bus Status"</strong> to generate the classification result.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STEP 6: Model Evaluation ================= -->
+    <section class="step-section" id="evaluation">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 6</span>
+          <h2>Model Evaluation</h2>
+        </div>
+        <span class="pill-badge pill-neutral">Test Set Performance</span>
+      </div>
+
+      <p class="step-desc">Evaluation metrics calculated dynamically on the 20% unseen test partition ({{ metrics.test_samples }} samples).</p>
+
+      <!-- 4 Evaluation Metrics -->
+      <div class="eval-grid">
+        <div class="metric-card">
+          <div class="label">Accuracy</div>
+          <div class="score">{{ metrics.accuracy }}%</div>
+          <div class="desc">Overall correct predictions</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="label">Precision</div>
+          <div class="score">{{ metrics.precision }}%</div>
+          <div class="desc">Delayed prediction precision</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="label">Recall</div>
+          <div class="score">{{ metrics.recall }}%</div>
+          <div class="desc">True delayed trips identified</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="label">F1-Score</div>
+          <div class="score">{{ metrics.f1_score }}%</div>
+          <div class="desc">Harmonic mean of precision & recall</div>
+        </div>
+      </div>
+
+      <!-- Confusion Matrix -->
+      <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 14px; color: var(--text-main);">Confusion Matrix Analysis</h4>
+      <div class="confusion-matrix-wrapper">
+        <div class="cm-image-box">
+          <img src="{{ url_for('static', filename='plots/confusion_matrix.png') }}" alt="Confusion Matrix Plot">
+        </div>
+        
+        <div class="cm-breakdown-box">
+          <h4>Test Breakdown ({{ metrics.test_samples }} Records)</h4>
+          <div class="cm-stat-item">
+            <span class="k">True Negatives (On-Time correctly predicted)</span>
+            <span class="v" style="color: #34d399;">{{ metrics.confusion_matrix.tn }}</span>
+          </div>
+          <div class="cm-stat-item">
+            <span class="k">False Positives (On-Time predicted as Delayed)</span>
+            <span class="v" style="color: #f87171;">{{ metrics.confusion_matrix.fp }}</span>
+          </div>
+          <div class="cm-stat-item">
+            <span class="k">False Negatives (Delayed predicted as On-Time)</span>
+            <span class="v" style="color: #f87171;">{{ metrics.confusion_matrix.fn }}</span>
+          </div>
+          <div class="cm-stat-item">
+            <span class="k">True Positives (Delayed correctly predicted)</span>
+            <span class="v" style="color: #38bdf8;">{{ metrics.confusion_matrix.tp }}</span>
+          </div>
+          <div class="cm-stat-item" style="margin-top: 8px;">
+            <span class="k">Test Set Accuracy Rate</span>
+            <span class="v" style="color: var(--accent-cyan);">{{ metrics.accuracy }}%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STEP 7: Prediction History ================= -->
+    <section class="step-section" id="history">
+      <div class="step-header">
+        <div class="step-title">
+          <span class="step-tag">STEP 7</span>
+          <h2>Prediction History</h2>
+        </div>
+        <form action="/api/clear-history" method="POST" onsubmit="return confirm('Are you sure you want to clear prediction history?');">
+          <button type="submit" class="btn-secondary">Clear History</button>
+        </form>
+      </div>
+
+      <p class="step-desc">Persistent prediction log stored in SQLite database (<code>database/predictions.db</code>).</p>
+
+      <div class="table-responsive">
+        <table class="dark-table" id="historyTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Distance</th>
+              <th>Traffic</th>
+              <th>Weather</th>
+              <th>Time</th>
+              <th>Prev Delay</th>
+              <th>Prediction</th>
+              <th>Confidence</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            {% if history %}
+              {% for item in history %}
+                <tr>
+                  <td>#{{ item.id }}</td>
+                  <td>{{ item.distance }} km</td>
+                  <td>
+                    <span class="pill-badge {% if item.traffic_level == 'High' %}pill-warning{% elif item.traffic_level == 'Medium' %}pill-neutral{% else %}pill-success{% endif %}">
+                      {{ item.traffic_level }}
+                    </span>
+                  </td>
+                  <td>{{ item.weather }}</td>
+                  <td>{{ item.time_of_day }}</td>
+                  <td>{{ item.previous_delay }} min</td>
+                  <td>
+                    <span class="pill-badge {% if item.prediction == 'Delayed' %}pill-warning{% else %}pill-success{% endif %}">
+                      {{ item.prediction }}
+                    </span>
+                  </td>
+                  <td><strong>{{ item.confidence }}%</strong></td>
+                  <td style="color: var(--text-muted); font-size: 0.8rem;">{{ item.created_at }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr id="noHistoryRow">
+                <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                  No prediction history yet. Make a prediction in Step 5 to see records logged here.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= Final Laboratory Result Banner ================= -->
+    <div class="final-result-card">
+      <h3>📋 Project Summary & Final Result</h3>
+      <p>
+        “The Bus Delay Prediction system was successfully implemented using Machine Learning. The system preprocesses bus-trip data, performs exploratory data analysis, trains a Random Forest classification model, evaluates its performance using Accuracy, Precision, Recall and F1-Score, predicts whether a bus will be On-Time or Delayed, and stores prediction history using SQLite.”
+      </p>
+    </div>
+
+    <footer>
+      <p>Machine Learning Laboratory Project — Bus Delay Prediction System &copy; 2026</p>
+    </footer>
+
+  </div>
+
+  <!-- JavaScript for Interactive AJAX Prediction without page reload -->
+  <script>
+    document.getElementById('predictionForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const btn = document.getElementById('predictBtn');
+      btn.textContent = 'Analyzing...';
+      btn.disabled = true;
+
+      const formData = {
+        distance: document.getElementById('distance').value,
+        traffic_level: document.getElementById('traffic_level').value,
+        weather: document.getElementById('weather').value,
+        time_of_day: document.getElementById('time_of_day').value,
+        previous_delay: document.getElementById('previous_delay').value
+      };
+
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const isDelayed = data.prediction === 'Delayed';
+          const themeClass = isDelayed ? 'delayed' : 'ontime';
+
+          const resultHtml = `
+            <div class="result-box ${themeClass}">
+              <div class="header-text">BUS STATUS</div>
+              <div class="status-text">${data.prediction.toUpperCase()}</div>
+              
+              <div class="confidence-bar-container">
+                <div class="confidence-bar-label">
+                  <span>Prediction Confidence</span>
+                  <span>${data.confidence}%</span>
+                </div>
+                <div class="confidence-bar-track">
+                  <div class="confidence-bar-fill ${themeClass}" style="width: ${data.confidence}%;"></div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Saved automatically to SQLite History (ID #${data.id})
+            </p>
+          `;
+
+          document.getElementById('resultPanel').innerHTML = resultHtml;
+
+          // Update History Table dynamically
+          const tbody = document.getElementById('historyTableBody');
+          const noHistRow = document.getElementById('noHistoryRow');
+          if (noHistRow) {
+            noHistRow.remove();
+          }
+
+          const trafficBadgeClass = data.inputs.traffic_level === 'High' ? 'pill-warning' : (data.inputs.traffic_level === 'Medium' ? 'pill-neutral' : 'pill-success');
+          const statusBadgeClass = isDelayed ? 'pill-warning' : 'pill-success';
+
+          const newRow = document.createElement('tr');
+          newRow.innerHTML = `
+            <td>#${data.id}</td>
+            <td>${data.inputs.distance} km</td>
+            <td><span class="pill-badge ${trafficBadgeClass}">${data.inputs.traffic_level}</span></td>
+            <td>${data.inputs.weather}</td>
+            <td>${data.inputs.time_of_day}</td>
+            <td>${data.inputs.previous_delay} min</td>
+            <td><span class="pill-badge ${statusBadgeClass}">${data.prediction}</span></td>
+            <td><strong>${data.confidence}%</strong></td>
+            <td style="color: var(--text-muted); font-size: 0.8rem;">Just now</td>
+          `;
+
+          tbody.insertBefore(newRow, tbody.firstChild);
+        } else {
+          alert('Error: ' + (data.error || 'Failed to predict bus status.'));
+        }
+      } catch (err) {
+        console.error(err);
+        // If fetch fails, submit traditionally
+        document.getElementById('predictionForm').submit();
+      } finally {
+        btn.textContent = 'Predict Bus Status';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
